@@ -13,7 +13,7 @@ from soco import SoCo
 URL_BASE = {'ted': 'http://ia801402.us.archive.org/20/items/TenD2005-07-16.flac16/TenD2005-07-16t10Wonderboy.mp3',
 'Sean': 'http://fmn.rrimg.com/fmn059/audio/20140822/0210/m_mTCE_490d00001683125d.mp3',
 'Lance': 'http://fmn.rrimg.com/fmn059/audio/20140822/0210/m_mTCE_490d00001683125d.mp3',
-'Unknown': 'Unknown'
+'Unknown': 'http://soundbible.com/mp3/School_Fire_Alarm-Cullen_Card-202875844.mp3'
 }
 
 MUSIC_BASE = {'http://ia801402.us.archive.org/20/items/TenD2005-07-16.flac16/TenD2005-07-16t10Wonderboy.mp3':'Wonderboy',
@@ -64,33 +64,20 @@ class SonoController():
         self.core.play_uri(url)
 
     def play_by_userName(self, name):
-        url = URL_BASE.get(name,"Unknown")
-        if (url == "Unknown"):
-            track = self.core.get_current_track_info()
-            current_play = track['title']
-            # print track['title']
-            target_play = MUSIC_BASE.get(url, "Unknow")
-            # print target_play
-            if (current_play == target_play):
-                print "unknown person"
-            else:
-                self.core.clear_queue()
-                self.core.add_uri_to_queue(ALARM_URL)
-                self.core.add_uri_to_queue(END_URL)
-                self.core.play_from_queue(0, True)
+        url = URL_BASE.get(name, ALARM_URL)
+
+        track = self.core.get_current_track_info()
+        current_play = track['title']
+        # print track['title']
+        target_play = MUSIC_BASE.get(url, "Unknow")
+        # print target_play
+        if (current_play == target_play):
+            print "the same person"
         else:
-            track = self.core.get_current_track_info()
-            current_play = track['title']
-            # print track['title']
-            target_play = MUSIC_BASE.get(url, "Unknow")
-            # print target_play
-            if (current_play == target_play):
-                print "the same person"
-            else:
-                self.core.clear_queue()
-                self.core.add_uri_to_queue(url)
-                self.core.add_uri_to_queue(END_URL)
-                self.core.play_from_queue(0, True)
+            self.core.clear_queue()
+            self.core.add_uri_to_queue(url)
+            self.core.add_uri_to_queue(END_URL)
+            self.core.play_from_queue(0, True)
 
     def pause(self):
         self.core.pause()

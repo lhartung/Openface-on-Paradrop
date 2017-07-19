@@ -225,18 +225,16 @@ class WifiLedBulb():
         self.__write(msg)
 
     def flashGreen(self):
-        for flashCnt in range(5):
-            self.setWarmWhite(1)
-            time.sleep(1.0)
-            self.setRgb(0,255,0)
-            time.sleep(1.0)
+        self.setWarmWhite(1)
+        time.sleep(1.0)
+        self.setRgb(0,255,0)
+        time.sleep(1.0)
 
     def flashRed(self):
-        for flashCnt in range(5):
-            self.setWarmWhite(1)
-            time.sleep(1.0)
-            self.setRgb(255,0,0)
-            time.sleep(1.0)
+        self.setWarmWhite(1)
+        time.sleep(1.0)
+        self.setRgb(255,0,0)
+        time.sleep(1.0)
 
     def __writeRaw(self, bytes):
         self.socket.send(bytes)
