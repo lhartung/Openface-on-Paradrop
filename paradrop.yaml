@@ -1,0 +1,34 @@
+name: home-security
+description: A Paradrop chute using a low resource device as a security camera.
+version: 1
+type: light
+use: python2-cv
+command: python -u -m chute
+config:
+  environment:
+    IMAGE_INTERVAL: 2.0
+    MOTION_THRESHOLD: 40.0
+    SECCAM_MODE: detect
+  host_config:
+    port_bindings:
+      '81': 81
+  net:
+    wifi:
+      dhcp:
+        lease: 12h
+        limit: 250
+        start: 4
+      intfName: wlan0
+      key: paradropseccam
+      options:
+        hidden: false
+        isolate: false
+      requests:
+        hwmode: 11g
+      ssid: seccam53
+      type: wifi
+  web:
+    port: 5000
+source:
+  type: git
+  url: https://github.com/lhartung/Openface-on-Paradrop
