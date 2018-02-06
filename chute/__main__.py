@@ -1,5 +1,6 @@
 from __future__ import print_function
 
+import json
 import os
 import thread
 import time
@@ -8,32 +9,21 @@ from flask import Flask, jsonify, send_from_directory
 from PIL import Image
 from pdtools import ParadropClient
 
+from .face_classifier import FaceClassifier
+from .server import server
 
-IMAGE_INTERVAL = os.environ.get('IMAGE_INTERVAL', 2.0)
+
+IMAGE_INTERVAL = os.environ.get('IMAGE_INTERVAL', 1.0)
 PARADROP_DATA_DIR = os.environ.get("PARADROP_DATA_DIR", "/tmp")
 
 SAVE_DIR = os.path.join(PARADROP_DATA_DIR, "photos")
-
-server = Flask(__name__)
-
-
-@server.route('/photos/<path:path>')
-def GET_photo(path):
-    return send_from_directory(SAVE_DIR, path)
-
-
-@server.route('/')
-def GET_root():
-    return send_from_directory('web/app-dist', 'index.html')
-
-
-@server.route('/<path:path>')
-def GET_doc(path):
-    return send_from_directory('web/app-dist', path)
+STATUS_DIR = os.path.join(PARADROP_DATA_DIR, "status")
 
 
 def setup():
-    # Make sure the photo directory exists.
+    # Make sure the status and photo directories exist.
+    if not os.path.isdir(STATUS_DIR):
+        os.makedirs(STATUS_DIR)
     if not os.path.isdir(SAVE_DIR):
         os.makedirs(SAVE_DIR)
 
@@ -44,7 +34,15 @@ def setup():
 def main():
     client = ParadropClient()
 
-    save_prefix = os.path.join(SAVE_DIR, "camera-")
+    latest_path = os.path.join(STATUS_DIR, "latest.json")
+    save_prefix = os.path.join(SAVE_DIR, "camera")
+
+    dlibFacePredictor = "/opt/openface/models/dlib/shape_predictor_68_face_landmarks.dat"
+    classifierModel = "LinearSvm.pkl"
+    networkModel = "/opt/openface/models/openface/nn4.small2.v1.t7"
+    imgDim = 96
+    cuda = False
+    classifier = FaceClassifier(dlibFacePredictor, classifierModel, networkModel, imgDim, cuda)
 
     try:
         m_sec = float(IMAGE_INTERVAL)
@@ -70,9 +68,28 @@ def main():
                 print("Image: {}".format(str(error)))
                 continue
 
-            fileName = "{}-{}.jpg".format(save_prefix, int(time.time()))
-            img.save(fileName)
-            print("Saved image: {}".format(fileName))
+            timestamp = int(time.time())
+            fileName = "camera-{}.jpg".format(timestamp)
+            path = os.path.join(SAVE_DIR, fileName)
+            img.save(path)
+            print("Saved image: {}".format(path))
+
+            people, scores, bbs = classifier.infer(path)
+            if len(people) > 0:
+                print("Detected: {} with score {}".format(people[0], scores[0]))
+
+            newPath = os.path.join(STATUS_DIR, "latest.jpg")
+            classifier.label(path, newPath, people, scores, bbs)
+
+            latest = dict()
+            latest['path'] = 'status/latest.jpg'
+            latest['ts'] = timestamp
+            latest['detections'] = [
+                {'name': people[i], 'score': scores[i]} for i in range(len(people))
+            ]
+
+            with open(latest_path, 'w') as output:
+                output.write(json.dumps(latest))
 
         time.sleep(m_sec)
 

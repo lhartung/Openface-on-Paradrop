@@ -1,18 +1,11 @@
-#!/usr/bin/env python2
-
-import time
-
-start = time.time()
-
-import argparse
 import cv2
 import os
 import pickle
+import time
 
 from operator import itemgetter
 
 import numpy as np
-np.set_printoptions(precision=2)
 import pandas as pd
 
 import openface
@@ -26,64 +19,71 @@ from sklearn.mixture import GMM
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.naive_bayes import GaussianNB
 
+
 clfChoices = [
     'LinearSvm',
     'RadialSvm',
     'GaussianNB',
     'Forest',
     'Logic',
-    ]
+]
 
 
-def getRep(imgPath, args, align, net, multiple):
-    start = time.time()
-    bgrImg = cv2.imread(imgPath)
-    if bgrImg is None:
-        raise Exception("Unable to load image: {}".format(imgPath))
+np.set_printoptions(precision=2)
 
-    rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
 
-    start = time.time()
+class FaceClassifier(object):
+    def __init__(self, dlibFacePredictor, classifierModel, networkModel, imgDim, cuda):
+        self.imgDim = imgDim
+        self.classifierModel = classifierModel
+        self.start = time.time()
 
-    if multiple:
-        bbs = align.getAllFaceBoundingBoxes(rgbImg)
-    else:
-        bb1 = align.getLargestFaceBoundingBox(rgbImg)
-        bbs = [bb1]
-    if len(bbs) == 0 or (not multiple and bb1 is None):
-        raise Exception("Unable to find a face: {}".format(imgPath))
+        self.align = openface.AlignDlib(dlibFacePredictor)
+        self.net = openface.TorchNeuralNet(networkModel, imgDim, cuda)
 
-    reps = []
-    for bb in bbs:
+    def getRep(self, imgPath):
         start = time.time()
-        alignedFace = align.align(
-            args.imgDim,
-            rgbImg,
-            bb,
-            landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE)
-        if alignedFace is None:
-            raise Exception("Unable to align image: {}".format(imgPath))
+        bgrImg = cv2.imread(imgPath)
+        if bgrImg is None:
+            raise Exception("Unable to load image: {}".format(imgPath))
 
-        start = time.time()
-        rep = net.forward(alignedFace)
-        reps.append((bb.center().x, rep))
+        rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
 
-    sreps = sorted(reps, key=lambda x: x[0])
-    return sreps
+        self.start = time.time()
 
+        bbs = self.align.getAllFaceBoundingBoxes(rgbImg)
+        if bbs is None:
+            return None
 
-def infer(args, align, net, multiple=False):
-    scores = []
-    people = []
+        reps = []
+        for bb in bbs:
+            self.start = time.time()
+            alignedFace = self.align.align(
+                self.imgDim,
+                rgbImg,
+                bb,
+                landmarkIndices=openface.AlignDlib.OUTER_EYES_AND_NOSE)
+            if alignedFace is None:
+                raise Exception("Unable to align image: {}".format(imgPath))
 
-    with open(os.path.join(args.classifierModel, "classifier.pkl"), 'r') as f:
-        (le, clf) = pickle.load(f)
+            self.start = time.time()
+            rep = self.net.forward(alignedFace)
+            reps.append((bb.center().x, rep))
 
-    for img in args.imgs:
-        print("\n=== {} ===".format(img))
+        print("Found {} faces".format(len(reps)))
+        return (reps, bbs)
+
+    def infer(self, imgPath, multiple=False):
+        scores = []
+        people = []
+        bbs = []
+
+        modelPath = os.path.join("chute", self.classifierModel)
+        with open(modelPath, 'r') as f:
+            (le, clf) = pickle.load(f)
 
         try:
-            reps = getRep(img, args, align, net, multiple)
+            reps, bbs = self.getRep(imgPath)
 
             if len(reps) > 1:
                 print("List of faces in image from left to right")
@@ -91,7 +91,7 @@ def infer(args, align, net, multiple=False):
             for r in reps:
                 rep = r[1].reshape(1, -1)
                 bbx = r[0]
-                start = time.time()
+                self.start = time.time()
                 predictions = clf.predict_proba(rep).ravel()
                 maxI = np.argmax(predictions)
                 person = le.inverse_transform(maxI)
@@ -101,39 +101,44 @@ def infer(args, align, net, multiple=False):
                     person = 'Unknown'
                     confidence = 100
 
-                if multiple:
-                    print("Predict {} @ x={} with {:.2f} confidence.".format(person, bbx, confidence))
-                else:
-                    scores.append(confidence)
-                    people.append(person)
-                    print("Predict {} with {:.2f} confidence.".format(person, confidence))
-                    return scores, people
+                scores.append(confidence)
+                people.append(person)
+                print("Predict {} with {:.2f} confidence.".format(person, confidence))
 
-                if isinstance(clf, GMM):
-                    dist = np.linalg.norm(rep - clf.means_[maxI])
-                    print("  + Distance from the mean: {}".format(dist))
+            return people, scores, bbs
+
+#                if multiple:
+#                    print("Predict {} @ x={} with {:.2f} confidence.".format(person, bbx, confidence))
+#                else:
+#                    scores.append(confidence)
+#                    people.append(person)
+#                    print("Predict {} with {:.2f} confidence.".format(person, confidence))
+#                    return scores, people
+#
+#                if isinstance(clf, GMM):
+#                    dist = np.linalg.norm(rep - clf.means_[maxI])
+#                    print("  + Distance from the mean: {}".format(dist))
 
         except Exception as e:
             print('!! Warning: %s' % str(e))
-            return scores, people
+            return people, scores, bbs
 
 
-def inferMulti(args, align, net):
-    scores = []
-    people = []
-    threshold = -1;
-    votes = {}
+    def inferMulti(self, imgPath):
+        scores = []
+        people = []
+        threshold = -1;
+        votes = {}
 
-    for clfChoice in clfChoices:
-        print "\n==============="
-        print "Using the classifier: " + clfChoice
+        for clfChoice in clfChoices:
+            print "\n==============="
+            print "Using the classifier: " + clfChoice
 
-        with open(os.path.join(args.classifierModel, clfChoice + ".pkl"), 'r') as f_clf:
-            (le, clf) = pickle.load(f_clf)
+            with open(os.path.join(self.classifierModel, clfChoice + ".pkl"), 'r') as f_clf:
+                (le, clf) = pickle.load(f_clf)
 
-        for img in args.imgs:
             try:
-                reps = getRep(img, args, align, net, False)
+                reps = self.getRep(imgPath, False)
                 rep = reps[0][1].reshape(1, -1)
             except Exception as e:
                 print('!! Warning: %s' % str(e))
@@ -166,22 +171,39 @@ def inferMulti(args, align, net):
             else:
                 votes[person] = cnt + 1
 
-    # get majority vote
-    maxNum = -1;
-    maxName= None;
-    for name, num in votes.iteritems():
-        if (num > maxNum):
-            maxNum = num
-            maxName = name
+        # get majority vote
+        maxNum = -1;
+        maxName= None;
+        for name, num in votes.iteritems():
+            if (num > maxNum):
+                maxNum = num
+                maxName = name
 
-    print maxName, maxNum
+        print maxName, maxNum
 
-    if(maxNum < (len(clfChoices)+1)/2):
-        maxName = 'Unknown'
-        maxNum  = len(clfChoices) - maxNum
+        if(maxNum < (len(clfChoices)+1)/2):
+            maxName = 'Unknown'
+            maxNum  = len(clfChoices) - maxNum
 
-    scores.append( float (maxNum)/ len(clfChoices))
-    people.append(maxName)
+        scores.append( float (maxNum)/ len(clfChoices))
+        people.append(maxName)
 
-    print votes
-    return scores, people
+        print votes
+        return scores, people
+
+    def label(self, imgPath, newPath, people, scores, bbs):
+        bgrImg = cv2.imread(imgPath)
+        if bgrImg is None:
+            raise Exception("Unable to load image: {}".format(imgPath))
+
+        rgbImg = cv2.cvtColor(bgrImg, cv2.COLOR_BGR2RGB)
+
+        for idx, person in enumerate(people):
+            cv2.rectangle(rgbImg, (bbs[idx].left(), bbs[idx].top()),
+                    (bbs[idx].right(), bbs[idx].bottom()), (0, 255, 0), 2)
+
+            cv2.putText(rgbImg, "{} @{:.2f}".format(person, scores[idx]),
+                    (bbs[idx].left(), bbs[idx].bottom()+20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
+        cv2.imwrite(newPath, rgbImg)

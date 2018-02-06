@@ -48,24 +48,19 @@ angular.module("smarthouseApp")
 angular.module("smarthouseApp")
 .controller("SecurityCtrl", ["$http", "$interval", "$scope", function($http, $interval, $scope) {
   $scope.streamStarted = !1;
-  $scope.faceRecognitionOutput = "Processing...";
-
-  var b = "http://admin@" + window.location.hostname + ":81/video.cgi";
-  $scope.startStream = function() {
-    $scope.streamStarted || ($scope.streamStarted = !0, $("#video-stream")
-        .attr("src", b))
-  }
+  $scope.statusMessage = "Processing...";
+  $scope.imageSource = "/status/latest.jpg";
 
   var ticker = $interval(function() {
-    var host = window.location.hostname || "192.168.1.1";
-    var url = "http://" + host + ":8011/snap";
-    $http.get(url)
+    $http.get("/status/latest.json")
       .then(function(response) {
-        $scope.faceRecognitionOutput = response.data;
+        $scope.statusMessage = "OK";
+        $scope.latest = response.data;
+        $scope.imageSource = response.data.path + "?decache=" + response.data.ts;
       }, function(response) {
-        $scope.faceRecognitionOutput = response.data || 'Request failed';
+        $scope.statusMessage = "Request failed";
       });
-  }, 10000);
+  }, 1000);
 
   $scope.$on('$destroy', function() {
     $interval.cancel(ticker);
@@ -75,11 +70,10 @@ angular.module("smarthouseApp")
 angular.module("smarthouseApp")
 .controller("PhotosCtrl", ["$scope", "$http", "$interval", function(a, b, c) {
   a.photos = [];
-  var d = "http://" + window.location.hostname + ":8010",
-  e = 6e4,
+  var e = 6e4,
   f = null,
   g = function() {
-    b.get(d)
+    b.get("/photos")
       .then(function(b) {
         a.photos = b.data
       })
