@@ -11,6 +11,7 @@ from pdtools import ParadropClient
 
 from .face_classifier import FaceClassifier
 from .server import server
+from .sonos_controller import SonosController
 
 
 IMAGE_INTERVAL = os.environ.get('IMAGE_INTERVAL', 1.0)
@@ -33,6 +34,7 @@ def setup():
 
 def main():
     client = ParadropClient()
+    sonos = SonosController()
 
     latest_path = os.path.join(STATUS_DIR, "latest.json")
     save_prefix = os.path.join(SAVE_DIR, "camera")
@@ -90,6 +92,12 @@ def main():
 
             with open(latest_path, 'w') as output:
                 output.write(json.dumps(latest))
+
+            if len(people) > 0:
+                if all(p == "Unknown" for p in people):
+                    sonos.play_alarm()
+                else:
+                    sonos.play_by_name(people[0])
 
         time.sleep(m_sec)
 

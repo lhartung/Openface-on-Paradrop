@@ -9,6 +9,9 @@ config:
     IMAGE_INTERVAL: 2.0
     MOTION_THRESHOLD: 40.0
     SECCAM_MODE: detect
+    SONOS_ADDRESS: 192.168.1.181
+    SONG_FOR_LANCE: "http://fmn.rrimg.com/fmn059/audio/20140822/0210/m_mTCE_490d00001683125d.mp3"
+    SONG_FOR_UNKNOWN: "http://soundbible.com/mp3/School_Fire_Alarm-Cullen_Card-202875844.mp3"
   host_config:
     port_bindings:
       '81': 81
